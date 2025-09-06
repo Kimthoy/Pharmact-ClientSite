@@ -1,5 +1,5 @@
 import axios from "axios";
-
+import api from "../api/client";
 // Use CRA env if set, else default to localhost (matches your CORS)
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL?.replace(/\/+$/, "") ||
@@ -25,11 +25,24 @@ async function unwrap(promise) {
   }
 }
 
-/** Get paginated products */
-export async function getProducts(page = 1) {
-  return unwrap(API.get(`/client/products`, { params: { page } }));
-}
+export async function getProducts(arg1, arg2) {
+  let category, search;
+  if (typeof arg1 === "object" && arg1) {
+    category = arg1.category ?? "";
+    search = arg1.search ?? "";
+  } else {
+    category = arg1 ?? "";
+    search = arg2 ?? "";
+  }
 
+  const res = await api.get("/client/products", {
+    params: {
+      ...(category ? { category } : {}),
+      ...(search ? { search } : {}),
+    },
+  });
+  return Array.isArray(res.data) ? res.data : res.data?.data || [];
+}
 /** Get single product by stock/product id (stringified) */
 export async function getProductById(id) {
   const pid = encodeURIComponent(String(id));

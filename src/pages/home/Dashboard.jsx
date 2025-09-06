@@ -10,8 +10,6 @@ const ClientSite = () => {
     <div>
       <div className="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 font-sans min-h-screen">
         <ProductsSlider products={mockProducts} />
-        <Hero />
-       
         <AllProduct />
       </div>
     </div>

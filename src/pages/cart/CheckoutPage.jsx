@@ -1,11 +1,12 @@
+// src/pages/checkout/CheckoutPage.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
 import CartSummary from "../cart/CartSummary";
 import orderService from "../api/orderService";
-import cartService from "../api/cartService"; // used to clear cart after success
+import cartService from "../api/cartService"; // to clear cart after success
 
-// dummy options (replace with data from backend when ready)
+// TODO: Replace dummy data with API options
 const provinces = ["កណ្ដាល", "ភ្នំពេញ", "តាកែវ", "កំពង់ស្ពឺ"];
 const districts = ["ក្រុង/ស្រុក A", "ក្រុង/ស្រុក B", "ក្រុង/ស្រុក C"];
 const communes = ["ឃុំ/សង្កាត់ A", "ឃុំ/សង្កាត់ B", "ឃុំ/សង្កាត់ C"];
@@ -15,12 +16,12 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { items } = useCart();
 
+  // only selected lines
   const selectedLines = useMemo(
     () => Object.values(items || {}).filter((it) => it?.selected),
     [items]
   );
 
-  // form state
   const [form, setForm] = useState({
     full_name: "Khoy Rathanak",
     phone: "060776402",
@@ -31,10 +32,8 @@ export default function CheckoutPage() {
     commune: "ឃុំ/សង្កាត់ A",
     village: "ភូមិ A",
     saveDefault: true,
-
-    // delivery & payment
     deliverySlot: "24h",
-    paymentMethod: "cod", // 'cod' | 'aba_qr' | 'khqr'
+    paymentMethod: "cod",
     note: "",
   });
 
@@ -42,6 +41,32 @@ export default function CheckoutPage() {
 
   const onChange = (k) => (e) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // normalize cart line to backend payload
+  const normalizeItem = (line) => {
+    const productId =
+      line?.product_id || line?.product?.id || line?.product?.medicine?.id;
+
+    const name =
+      line?.name ||
+      line?.product?.name ||
+      line?.product?.medicine?.medicine_name ||
+      "Unknown";
+
+    const price =
+      Number(line?.price_usd) ||
+      Number(line?.price) ||
+      Number(line?.product?.medicine?.price ?? 0);
+
+    const qty = Number(line?.qty ?? 1);
+
+    return {
+      product_id: String(productId),
+      name,
+      price_usd: price,
+      qty,
+    };
+  };
 
   const placeOrder = async () => {
     if (selectedLines.length === 0) {
@@ -52,14 +77,7 @@ export default function CheckoutPage() {
     try {
       setSubmitting(true);
 
-      // snapshot cart lines -> API items
-      const itemsPayload = selectedLines.map((l) => ({
-        product_id: String(l?.product?.id),
-        name:
-          l?.product?.name ?? l?.product?.medicine?.medicine_name ?? "Unknown",
-        price_usd: Number(l?.product?.medicine?.price ?? 0),
-        qty: Number(l?.qty ?? 1),
-      }));
+      const itemsPayload = selectedLines.map(normalizeItem);
 
       const payload = {
         customer: {
@@ -73,20 +91,23 @@ export default function CheckoutPage() {
           village: form.village,
           save_default: !!form.saveDefault,
         },
-        payment_method: form.paymentMethod, // "cod" | "aba_qr" | "khqr"
-        delivery_slot: form.deliverySlot, // e.g., "24h"
+        payment_method: form.paymentMethod,
+        delivery_slot: form.deliverySlot,
         note: form.note || null,
         items: itemsPayload,
       };
 
       const order = await orderService.create(payload);
 
-      // optional: clear cart and navigate
+      // clear cart after order success
       try {
         await cartService.clearCart();
-      } catch {}
+      } catch (e) {
+        console.warn("Failed to clear cart:", e);
+      }
+
       alert(`Order #${order.id} created ✓`);
-      navigate("/"); // or navigate(`/order-success/${order.id}`)
+      navigate(`/order-success/${order.id}`);
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -105,9 +126,9 @@ export default function CheckoutPage() {
       </button>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-        {/* LEFT: form column */}
+        {/* LEFT: form */}
         <div className="md:col-span-2 space-y-4">
-          {/* Customer info card */}
+          {/* Customer info */}
           <section className="bg-white border rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-lg">កំណត់ព័ត៌មានទទួល</h2>
@@ -117,16 +138,17 @@ export default function CheckoutPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3">
+              {/* Name */}
               <div>
-                <label className="text-sm text-gray-600">ឈ្មោះ * </label>
+                <label className="text-sm text-gray-600">ឈ្មោះ *</label>
                 <input
                   className="mt-1 w-full border rounded-lg px-3 py-2"
                   value={form.full_name}
                   onChange={onChange("full_name")}
-                  placeholder="Full name"
                 />
               </div>
 
+              {/* Phone + Email */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm text-gray-600">លេខទូរស័ព្ទ *</label>
@@ -134,7 +156,6 @@ export default function CheckoutPage() {
                     className="mt-1 w-full border rounded-lg px-3 py-2"
                     value={form.phone}
                     onChange={onChange("phone")}
-                    placeholder="0xxxxxxxx"
                   />
                 </div>
                 <div>
@@ -143,11 +164,11 @@ export default function CheckoutPage() {
                     className="mt-1 w-full border rounded-lg px-3 py-2"
                     value={form.email}
                     onChange={onChange("email")}
-                    placeholder="email@example.com"
                   />
                 </div>
               </div>
 
+              {/* Address */}
               <div>
                 <label className="text-sm text-gray-600">
                   អាសយដ្ឋាន / លម្អិត *
@@ -156,73 +177,50 @@ export default function CheckoutPage() {
                   className="mt-1 w-full border rounded-lg px-3 py-2"
                   value={form.address}
                   onChange={onChange("address")}
-                  placeholder="ផ្ទះលេខ, ផ្លូវ, ចំណាំជិតខាង..."
                 />
               </div>
 
+              {/* Province / District / Commune */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-sm text-gray-600">
-                    ខេត្ត/រាជធានី *
-                  </label>
-                  <select
-                    className="mt-1 w-full border rounded-lg px-3 py-2"
-                    value={form.province}
-                    onChange={onChange("province")}
-                  >
-                    {provinces.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">
-                    ក្រុង/ស្រុក/ខណ្ឌ *
-                  </label>
-                  <select
-                    className="mt-1 w-full border rounded-lg px-3 py-2"
-                    value={form.district}
-                    onChange={onChange("district")}
-                  >
-                    {districts.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">ឃុំ/សង្កាត់ *</label>
-                  <select
-                    className="mt-1 w-full border rounded-lg px-3 py-2"
-                    value={form.commune}
-                    onChange={onChange("commune")}
-                  >
-                    {communes.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm text-gray-600">ភូមិ *</label>
                 <select
+                  value={form.province}
+                  onChange={onChange("province")}
                   className="mt-1 w-full border rounded-lg px-3 py-2"
-                  value={form.village}
-                  onChange={onChange("village")}
                 >
-                  {villages.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
+                  {provinces.map((p) => (
+                    <option key={p}>{p}</option>
+                  ))}
+                </select>
+                <select
+                  value={form.district}
+                  onChange={onChange("district")}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                >
+                  {districts.map((d) => (
+                    <option key={d}>{d}</option>
+                  ))}
+                </select>
+                <select
+                  value={form.commune}
+                  onChange={onChange("commune")}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                >
+                  {communes.map((c) => (
+                    <option key={c}>{c}</option>
                   ))}
                 </select>
               </div>
+
+              {/* Village */}
+              <select
+                value={form.village}
+                onChange={onChange("village")}
+                className="mt-1 w-full border rounded-lg px-3 py-2"
+              >
+                {villages.map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </select>
 
               <label className="flex items-center gap-2 pt-1">
                 <input
@@ -239,7 +237,7 @@ export default function CheckoutPage() {
             </div>
           </section>
 
-          {/* Delivery slot card */}
+          {/* Delivery slot */}
           <section className="bg-white border rounded-2xl p-4">
             <h2 className="font-semibold mb-3">មជ្ឈមណ្ឌលដឹកជញ្ជូន</h2>
             <label className="flex items-center gap-3 border rounded-xl px-3 py-3">
@@ -259,55 +257,35 @@ export default function CheckoutPage() {
             </label>
           </section>
 
-          {/* Payment methods card */}
+          {/* Payment methods */}
           <section className="bg-white border rounded-2xl p-4">
             <h2 className="font-semibold mb-3">បង់ប្រាក់ជម្រើស</h2>
-
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 border rounded-xl px-3 py-3">
+            {[
+              {
+                value: "cod",
+                label: "គិតប្រាក់ពេលដឹកជញ្ជូន",
+                desc: "បង់ប្រាក់ជាសាច់ប្រាក់ពេលទទួល",
+              },
+              { value: "aba_qr", label: "ABA KHQR", desc: "គិតថ្លៃសេវា 0.5%" },
+              { value: "khqr", label: "KHQR", desc: "គិតថ្លៃសេវា 0.5%" },
+            ].map((pm) => (
+              <label
+                key={pm.value}
+                className="flex items-center gap-3 border rounded-xl px-3 py-3"
+              >
                 <input
                   type="radio"
                   name="payment"
-                  value="cod"
-                  checked={form.paymentMethod === "cod"}
+                  value={pm.value}
+                  checked={form.paymentMethod === pm.value}
                   onChange={onChange("paymentMethod")}
                 />
                 <div className="flex-1">
-                  <div className="font-medium">គិតប្រាក់ពេលដឹកជញ្ជូន</div>
-                  <div className="text-xs text-gray-500">
-                    បង់ប្រាក់ជាសាច់ប្រាក់ពេលទទួល
-                  </div>
+                  <div className="font-medium">{pm.label}</div>
+                  <div className="text-xs text-gray-500">{pm.desc}</div>
                 </div>
               </label>
-
-              <label className="flex items-center gap-3 border rounded-xl px-3 py-3">
-                <input
-                  type="radio"
-                  name="payment"
-                  value="aba_qr"
-                  checked={form.paymentMethod === "aba_qr"}
-                  onChange={onChange("paymentMethod")}
-                />
-                <div className="flex-1">
-                  <div className="font-medium">ABA KHQR</div>
-                  <div className="text-xs text-gray-500">គិតថ្លៃសេវា 0.5%</div>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 border rounded-xl px-3 py-3">
-                <input
-                  type="radio"
-                  name="payment"
-                  value="khqr"
-                  checked={form.paymentMethod === "khqr"}
-                  onChange={onChange("paymentMethod")}
-                />
-                <div className="flex-1">
-                  <div className="font-medium">KHQR</div>
-                  <div className="text-xs text-gray-500">គិតថ្លៃសេវា 0.5%</div>
-                </div>
-              </label>
-            </div>
+            ))}
           </section>
 
           {/* Note */}
@@ -323,10 +301,10 @@ export default function CheckoutPage() {
           </section>
         </div>
 
-        {/* RIGHT: summary column */}
+        {/* RIGHT: summary */}
         <aside className="md:col-span-1 md:sticky md:top-4 self-start h-fit">
           <CartSummary
-            paymentMethod={form.paymentMethod} // for KHQR/ABA-QR -0.5% line
+            paymentMethod={form.paymentMethod}
             onCheckout={placeOrder}
             loading={submitting}
           />

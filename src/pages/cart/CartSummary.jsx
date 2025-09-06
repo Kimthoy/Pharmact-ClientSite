@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { useCart } from "../../context/CartContext";
 
-const DEFAULT_RATE = 4100; // override via prop if needed
+const DEFAULT_RATE = 4100;
 const MIN_ORDER_KHR = 1000;
 
 const round100 = (n) => Math.round(n / 100) * 100;
@@ -11,15 +11,32 @@ const fmtUSD = (n) => `$ ${n.toFixed(2)}`;
 
 // map of payment method → rate (negative = discount, positive = fee)
 const PAYMENT_RATES = {
-  cod: 0, // Cash on delivery, no fee/discount
-  aba_qr: -0.005, // -0.5% discount
-  khqr: -0.005, // -0.5% discount
+  cod: 0,
+  aba_qr: -0.005, // -0.5%
+  khqr: -0.005, // -0.5%
 };
+
+// --- helpers to tolerate both client + backend cart shapes ---
+function getSelected(list) {
+  // default selected=true when undefined (matches typical UI)
+  return (list || []).filter((it) => (it?.selected ?? true) === true);
+}
+function getQty(it) {
+  return Number(it?.qty ?? 1);
+}
+function getPriceUSD(it) {
+  // Prefer nested (frontend) → fallback to flat (backend)
+  return Number(
+    it?.product?.medicine?.price ??
+      it?.product?.price ?? // if you ever store price on product directly
+      it?.price_usd ?? // backend
+      it?.price ?? // any other alias
+      0
+  );
+}
 
 export default function CartSummary({
   onCheckout,
-
-  // optional inputs (fallbacks keep your old behavior)
   paymentMethod = "cod",
   shippingKHR: shippingProp = 0,
   couponKHR: couponProp = 0,
@@ -35,20 +52,20 @@ export default function CartSummary({
     payAdjKHR,
     totalKHR,
   } = useMemo(() => {
-    const list = Object.values(items || {}).filter((it) => it?.selected);
+    const list = getSelected(Object.values(items || {}));
 
-    const itemCount = list.reduce((s, it) => s + (it?.qty || 0), 0);
+    const itemCount = list.reduce((s, it) => s + getQty(it), 0);
 
     const subtotalKHR = list.reduce((sum, it) => {
-      const priceUSD = it?.product?.medicine?.price ?? 0;
-      return sum + priceUSD * exchangeRate * (it?.qty || 0);
+      const priceUSD = getPriceUSD(it);
+      return sum + priceUSD * exchangeRate * getQty(it);
     }, 0);
 
     const shippingKHR = round100(shippingProp || 0);
-    const couponKHR = round100(-Math.abs(couponProp || 0)); // coupons shown as negative
+    const couponKHR = round100(-Math.abs(couponProp || 0)); // coupons show as negative
 
     const rate = PAYMENT_RATES[paymentMethod] ?? 0;
-    const payAdjKHR = round100(subtotalKHR * rate); // e.g. -0.5% → negative (discount)
+    const payAdjKHR = round100(subtotalKHR * rate);
 
     const totalKHR = Math.max(
       subtotalKHR + shippingKHR + couponKHR + payAdjKHR,
@@ -70,7 +87,6 @@ export default function CartSummary({
 
   const belowMin = totalKHR > 0 && totalKHR < MIN_ORDER_KHR;
 
-  // optional coupon toggler UI
   const [showCoupon, setShowCoupon] = useState(false);
   const [couponCode, setCouponCode] = useState("");
 
@@ -104,7 +120,7 @@ export default function CartSummary({
         <span>{fmtKHR(shippingKHR)}</span>
       </div>
 
-      {/* Payment method adjustment (only show if non-zero) */}
+      {/* Payment method adjustment */}
       {!!payAdjKHR && (
         <div className="flex items-center justify-between mt-2 text-[15px] text-gray-500">
           <span>{pmLabel}</span>
@@ -116,7 +132,7 @@ export default function CartSummary({
         </div>
       )}
 
-      {/* Coupon (if passed as prop) */}
+      {/* Coupon */}
       {!!couponKHR && (
         <div className="flex items-center justify-between mt-2 text-[15px] text-gray-500">
           <span>បញ្ចុះតម្លៃ</span>
@@ -124,7 +140,6 @@ export default function CartSummary({
         </div>
       )}
 
-      {/* Divider */}
       <div className="my-3 h-px bg-gray-200" />
 
       {/* Grand total */}
@@ -136,7 +151,7 @@ export default function CartSummary({
         </div>
       </div>
 
-      {/* (Optional) coupon code UI — keep if you like */}
+      {/* Optional coupon UI */}
       <div className="mt-3">
         <button
           onClick={() => setShowCoupon((v) => !v)}
